@@ -5,7 +5,7 @@ bool SylvHooker::debug2 = false; // truly extensive logging
 
 std::unordered_map<void*, HookEntry> SylvHooker::g_hooks;
 
-std::string FormatString(const char* format, ...)
+std::string SylvHooker::FormatString(const char* format, ...)
 {
 	va_list args;
 	va_start(args, format);
@@ -15,15 +15,15 @@ std::string FormatString(const char* format, ...)
 	return std::string(buffer);
 }
 
-static bool WriteMemory(void* addr, const void* data, size_t len)
+static bool SyWriteMemory(void* addr, const void* data, size_t len)
 {
 	if (SylvHooker::debug2) 
-		std::cout << FormatString("WriteMemory called: addr=%p, len=%zu, data=%p", addr, len, data) << std::endl; 
+		std::cout << SylvHooker::FormatString("SyWriteMemory called: addr=%p, len=%zu, data=%p", addr, len, data) << std::endl; 
 
 	DWORD old;
 	if (!VirtualProtect(addr, len, PAGE_EXECUTE_READWRITE, &old)) {
 		if (SylvHooker::debug2) 
-			std::cerr << "WriteMemory: VirtualProtect failed!" << std::endl;
+			std::cerr << "SyWriteMemory: VirtualProtect failed!" << std::endl;
 		return false;
 	}
 
@@ -34,31 +34,31 @@ static bool WriteMemory(void* addr, const void* data, size_t len)
 
 	if (SylvHooker::debug2) 
 	{
-		std::cout << FormatString("WriteMemory: wrote %zu bytes to %p", len, addr) << std::endl;
+		std::cout << SylvHooker::FormatString("SyWriteMemory: wrote %zu bytes to %p", len, addr) << std::endl;
 
 		std::string bytes;
 		for (size_t i = 0; i < len; ++i)
-			bytes += FormatString("%02X ", ((uint8_t*)addr)[i]);
-		std::cout << FormatString("Memory at %p: %s", addr, bytes.c_str()) << std::endl;
+			bytes += SylvHooker::FormatString("%02X ", ((uint8_t*)addr)[i]);
+		std::cout << SylvHooker::FormatString("Memory at %p: %s", addr, bytes.c_str()) << std::endl;
 	}
 	return true;
 }
 
 
-static void* AllocTrampoline(size_t size)
+static void* SyAllocTrampoline(size_t size)
 {
 	void* p = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
 	if (SylvHooker::debug)
-		std::cout << FormatString("Allocated trampoline at %p (%zu bytes)", p, size) << std::endl;
+		std::cout << SylvHooker::FormatString("Allocated trampoline at %p (%zu bytes)", p, size) << std::endl;
 
 	return p;
 }
 
-static bool MakeRelJump(void* src, void* dst)
+static bool SyMakeRelJump(void* src, void* dst)
 {
 	if (SylvHooker::debug2) 
-		std::cout << FormatString("MakeRelJump: src=%p, dst=%p", src, dst) << std::endl;
+		std::cout << SylvHooker::FormatString("SyMakeRelJump: src=%p, dst=%p", src, dst) << std::endl;
 
 	if (sizeof(void*) == 4)
 	{
@@ -67,8 +67,8 @@ static bool MakeRelJump(void* src, void* dst)
 		buf[0] = 0xE9;
 		std::memcpy(buf + 1, &rel, 4);
 		if (SylvHooker::debug2) 
-			std::cout << FormatString("MakeRelJump (32-bit): rel=%x", rel) << std::endl;
-		return WriteMemory(src, buf, 5);
+			std::cout << SylvHooker::FormatString("SyMakeRelJump (32-bit): rel=%x", rel) << std::endl;
+		return SyWriteMemory(src, buf, 5);
 	}
 	else
 	{
@@ -84,17 +84,17 @@ static bool MakeRelJump(void* src, void* dst)
 		{
 			std::string hex;
 			for (int i = 0; i < 14; ++i)
-				hex += FormatString("%02X ", buf[i]);
-			std::cout << FormatString("MakeRelJump (64-bit): buf=%s", hex.c_str()) << std::endl;
+				hex += SylvHooker::FormatString("%02X ", buf[i]);
+			std::cout << SylvHooker::FormatString("SyMakeRelJump (64-bit): buf=%s", hex.c_str()) << std::endl;
 		}
-		return WriteMemory(src, buf, 14);
+		return SyWriteMemory(src, buf, 14);
 	}
 }
 
-static bool WriteRelJumpToBuffer(uint8_t* dstBuf, void* fromAddr, void* toAddr)
+static bool SyWriteRelJumpToBuffer(uint8_t* dstBuf, void* fromAddr, void* toAddr)
 {
 	if (SylvHooker::debug2) 
-		std::cout << FormatString("WriteRelJumpToBuffer: dstBuf=%p, fromAddr=%p, toAddr=%p", dstBuf, fromAddr, toAddr) << std::endl;
+		std::cout << SylvHooker::FormatString("SyWriteRelJumpToBuffer: dstBuf=%p, fromAddr=%p, toAddr=%p", dstBuf, fromAddr, toAddr) << std::endl;
 
 	if (sizeof(void*) == 4)
 	{
@@ -102,7 +102,7 @@ static bool WriteRelJumpToBuffer(uint8_t* dstBuf, void* fromAddr, void* toAddr)
 		int32_t rel = (int32_t)((uint8_t*)toAddr - ((uint8_t*)fromAddr + 5));
 		std::memcpy(dstBuf + 1, &rel, 4);
 		if (SylvHooker::debug2) 
-			std::cout << FormatString("WriteRelJumpToBuffer (32-bit): rel=%x", rel) << std::endl;
+			std::cout << SylvHooker::FormatString("SyWriteRelJumpToBuffer (32-bit): rel=%x", rel) << std::endl;
 		return true;
 	}
 	else
@@ -118,17 +118,17 @@ static bool WriteRelJumpToBuffer(uint8_t* dstBuf, void* fromAddr, void* toAddr)
 		{
 			std::string hex;
 			for (int i = 0; i < 14; ++i)
-				hex += FormatString("%02X ", dstBuf[i]);
-			std::cout << FormatString("WriteRelJumpToBuffer (64-bit): buf=%s", hex.c_str()) << std::endl;
+				hex += SylvHooker::FormatString("%02X ", dstBuf[i]);
+			std::cout << SylvHooker::FormatString("SyWriteRelJumpToBuffer (64-bit): buf=%s", hex.c_str()) << std::endl;
 		}
 		return true;
 	}
 }
 
-size_t CalculateInstructionLength(void* func, size_t minBytes)
+size_t SyCalculateInstructionLength(void* func, size_t minBytes)
 {
 	if (SylvHooker::debug2) 
-		std::cout << FormatString("CalculateInstructionLength: func=%p, minBytes=%zu", func, minBytes) << std::endl;
+		std::cout << SylvHooker::FormatString("SyCalculateInstructionLength: func=%p, minBytes=%zu", func, minBytes) << std::endl;
 
 	uint8_t* ptr = (uint8_t*)func;
 	size_t len = 0;
@@ -137,7 +137,7 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 	while (len < minBytes)
 	{
 		if (SylvHooker::debug2)
-			std::cout << FormatString("begin instruction %d at offset %zu (abs ptr %p)", inst_num, len, ptr + len) << std::endl;
+			std::cout << SylvHooker::FormatString("begin instruction %d at offset %zu (abs ptr %p)", inst_num, len, ptr + len) << std::endl;
 
 		if (IsBadReadPtr(ptr + len, 1)) {
 			std::cerr << "CANT READ" << std::endl;
@@ -155,7 +155,7 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 		while (prefix && prefixes < 15) {
 			uint8_t b = *code;
 			if (SylvHooker::debug2)
-				std::cout << FormatString("prefix loop: b=%02X, code=%p, prefixes=%d", b, code, prefixes) << std::endl;
+				std::cout << SylvHooker::FormatString("prefix loop: b=%02X, code=%p, prefixes=%d", b, code, prefixes) << std::endl;
 
 			switch (b) {
 			case 0xF0: case 0xF2: case 0xF3: // LOCK and REP/REPE/REPNE
@@ -168,7 +168,7 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 				if (sizeof(void*) == 8 && (b & 0xF0) == 0x40) {
 					rexW = b & 8; ++code; ++prefixes;
 					if (SylvHooker::debug2)
-						std::cout << FormatString("REX prefix 0x%02X detected (rexW=%d)", b, !!rexW) << std::endl;
+						std::cout << SylvHooker::FormatString("REX prefix 0x%02X detected (rexW=%d)", b, !!rexW) << std::endl;
 					continue;
 				}
 				prefix = false;
@@ -185,10 +185,10 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 			opcode2 = *code++;
 		}
 
-		std::string info = FormatString("opcode: %02X%s%s", opcode1, two_byte ? " " : "", two_byte ? FormatString("%02X", opcode2).c_str() : "");
+		std::string info = SylvHooker::FormatString("opcode: %02X%s%s", opcode1, two_byte ? " " : "", two_byte ? SylvHooker::FormatString("%02X", opcode2).c_str() : "");
 
 		if (SylvHooker::debug)
-			std::cout << FormatString("decoding: %s at %p", info.c_str(), start) << std::endl;
+			std::cout << SylvHooker::FormatString("decoding: %s at %p", info.c_str(), start) << std::endl;
 
 		// decode shitt
 		bool hasModRM = false, hasImm = false, hasDisp = false;
@@ -222,14 +222,14 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 			mod = (modrm & 0xC0) >> 6;
 			rm = (modrm & 0x07);
 			if (SylvHooker::debug2)
-				std::cout << FormatString("modrm: %02X (mod=%d rm=%d)", modrm, mod, rm) << std::endl;
+				std::cout << SylvHooker::FormatString("modrm: %02X (mod=%d rm=%d)", modrm, mod, rm) << std::endl;
 
 			// SIB
 			if ((sizeof(void*) == 4 || sizeof(void*) == 8) && mod != 3 && rm == 4) {
 				sib = *code++;
 				uint8_t base = sib & 0x07;
 				if (SylvHooker::debug2)
-					std::cout << FormatString("SIB: %02X (base=%d)", sib, base) << std::endl;
+					std::cout << SylvHooker::FormatString("SIB: %02X (base=%d)", sib, base) << std::endl;
 				if (mod == 0 && base == 5) {
 					dispSize = 4;
 					if (SylvHooker::debug2)
@@ -257,19 +257,19 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 		ins_len = code - start;
 
 		if (ins_len == 0) {
-			std::cerr << FormatString("ZERO LENGTH AT %ps", start) << std::endl;
+			std::cerr << SylvHooker::FormatString("ZERO LENGTH AT %ps", start) << std::endl;
 			ins_len = 1;
 		}
 
 		if (SylvHooker::debug2) {
-			std::cout << FormatString("decoded %zu bytes at %p: %s%s%s%s", ins_len, start, info.c_str(),
+			std::cout << SylvHooker::FormatString("decoded %zu bytes at %p: %s%s%s%s", ins_len, start, info.c_str(),
 				hasModRM ? " [modrm]" : "",
-				dispSize ? FormatString(" [disp=%d]", dispSize).c_str() : "",
-				immSize ? FormatString(" [imm=%d]", immSize).c_str() : "") << std::endl;
+				dispSize ? SylvHooker::FormatString(" [disp=%d]", dispSize).c_str() : "",
+				immSize ? SylvHooker::FormatString(" [imm=%d]", immSize).c_str() : "") << std::endl;
 			std::string memBytes;
 			for (size_t i = 0; i < ins_len; ++i)
-				memBytes += FormatString("%02X ", *(start + i));
-			std::cout << FormatString("Bytes: %s", memBytes.c_str()) << std::endl;
+				memBytes += SylvHooker::FormatString("%02X ", *(start + i));
+			std::cout << SylvHooker::FormatString("Bytes: %s", memBytes.c_str()) << std::endl;
 		}
 
 		len += ins_len ? ins_len : 1;
@@ -277,7 +277,7 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 	}
 
 	if (SylvHooker::debug)
-		std::cout << FormatString("Total instruction length calculated: %zu for 0x%p", len, func) << std::endl;
+		std::cout << SylvHooker::FormatString("Total instruction length calculated: %zu for 0x%p", len, func) << std::endl;
 
 	return len;
 }
@@ -285,7 +285,7 @@ size_t CalculateInstructionLength(void* func, size_t minBytes)
 bool SylvHooker::CreateHook(void*& target, void* detour, size_t overwriteLen)
 {
 	if (SylvHooker::debug2)
-		std::cout << FormatString("CreateHook: target=%p detour=%p", target, detour) << std::endl;
+		std::cout << SylvHooker::FormatString("CreateHook: target=%p detour=%p", target, detour) << std::endl;
 
 	if (!target || !detour) {
 		if (SylvHooker::debug2)
@@ -303,9 +303,9 @@ bool SylvHooker::CreateHook(void*& target, void* detour, size_t overwriteLen)
 
 	size_t minJumpLen = (sizeof(void*) == 4) ? 5 : 14;
 
-	std::cout << FormatString("minjumplen %d", minJumpLen) << std::endl;
+	std::cout << SylvHooker::FormatString("minjumplen %d", minJumpLen) << std::endl;
 
-	if (overwriteLen == 0) overwriteLen = CalculateInstructionLength(target, minJumpLen);
+	if (overwriteLen == 0) overwriteLen = SyCalculateInstructionLength(target, minJumpLen);
 
 	HookEntry e{};
 	e.target = target;
@@ -318,15 +318,15 @@ bool SylvHooker::CreateHook(void*& target, void* detour, size_t overwriteLen)
 	if (SylvHooker::debug2) {
 		std::string origBytes;
 		for (size_t i = 0; i < overwriteLen; ++i)
-			origBytes += FormatString("%02X ", e.origBytes[i]);
-		std::cout << FormatString("Original bytes: %s", origBytes.c_str()) << std::endl;
+			origBytes += SylvHooker::FormatString("%02X ", e.origBytes[i]);
+		std::cout << SylvHooker::FormatString("Original bytes: %s", origBytes.c_str()) << std::endl;
 	}
 
 	size_t trampSize = overwriteLen + minJumpLen + 16;
-	void* tramp = AllocTrampoline(trampSize);
+	void* tramp = SyAllocTrampoline(trampSize);
 	if (!tramp) {
 		if (SylvHooker::debug2)
-			std::cerr << "CreateHook: AllocTrampoline failed!" << std::endl;
+			std::cerr << "CreateHook: SyAllocTrampoline failed!" << std::endl;
 		return false;
 	}
 
@@ -335,10 +335,10 @@ bool SylvHooker::CreateHook(void*& target, void* detour, size_t overwriteLen)
 
 	uint8_t* jmpBack = p + overwriteLen;
 	void* returnAddr = (uint8_t*)target + overwriteLen;
-	WriteRelJumpToBuffer(jmpBack, jmpBack, returnAddr);
+	SyWriteRelJumpToBuffer(jmpBack, jmpBack, returnAddr);
 
 	if (SylvHooker::debug2)
-		std::cout << FormatString("Trampoline setup: tramp=%p jmpBack=%p returnAddr=%p", tramp, jmpBack, returnAddr) << std::endl;
+		std::cout << SylvHooker::FormatString("Trampoline setup: tramp=%p jmpBack=%p returnAddr=%p", tramp, jmpBack, returnAddr) << std::endl;
 
 	e.trampoline = tramp;
 
@@ -347,7 +347,7 @@ bool SylvHooker::CreateHook(void*& target, void* detour, size_t overwriteLen)
 	g_hooks.emplace(e.target, std::move(e));
 
 	if (debug)
-		std::cout << FormatString("Registered hook: %p -> %p, trampoline at %p (len %zu)", e.target, detour, tramp, overwriteLen) << std::endl;
+		std::cout << SylvHooker::FormatString("Registered hook: %p -> %p, trampoline at %p (len %zu)", e.target, detour, tramp, overwriteLen) << std::endl;
 
 	if (SylvHooker::debug2) 
 		std::cout << "CreateHook: hook emplaced successfully" << std::endl;
@@ -364,23 +364,23 @@ bool SylvHooker::CommitHooks()
 	for (auto& kv : g_hooks)
 	{
 		if (SylvHooker::debug2)
-			std::cout << FormatString("CommitHooks: Processing hook for target=%p detour=%p enabled=%d", kv.second.target, kv.second.detour, kv.second.enabled) << std::endl;
+			std::cout << SylvHooker::FormatString("CommitHooks: Processing hook for target=%p detour=%p enabled=%d", kv.second.target, kv.second.detour, kv.second.enabled) << std::endl;
 
 		if (!kv.second.enabled)
 		{
-			if (MakeRelJump(kv.second.target, kv.second.detour))
+			if (SyMakeRelJump(kv.second.target, kv.second.detour))
 			{
 				kv.second.enabled = true;
 				if (debug)
-					std::cout << FormatString("Hook committed: %p -> %p", kv.second.target, kv.second.detour) << std::endl;
+					std::cout << SylvHooker::FormatString("Hook committed: %p -> %p", kv.second.target, kv.second.detour) << std::endl;
 				if (SylvHooker::debug2)
-					std::cout << "CommitHooks: MakeRelJump succeeded." << std::endl;
+					std::cout << "CommitHooks: SyMakeRelJump succeeded." << std::endl;
 			}
 			else if (debug)
 			{
-				std::cerr << FormatString("Failed to commit hook: %p", kv.second.target) << std::endl;
+				std::cerr << SylvHooker::FormatString("Failed to commit hook: %p", kv.second.target) << std::endl;
 				if (SylvHooker::debug2)
-					std::cerr << "CommitHooks: MakeRelJump failed." << std::endl;
+					std::cerr << "CommitHooks: SyMakeRelJump failed." << std::endl;
 			}
 		}
 	}
@@ -392,7 +392,7 @@ bool SylvHooker::CommitHooks()
 bool SylvHooker::EnableHook(void* target)
 {
 	if (SylvHooker::debug2)
-		std::cout << FormatString("EnableHook called: target=%p", target) << std::endl;
+		std::cout << SylvHooker::FormatString("EnableHook called: target=%p", target) << std::endl;
 
 	auto it = g_hooks.find(target);
 	if (it == g_hooks.end() || it->second.enabled) {
@@ -401,16 +401,16 @@ bool SylvHooker::EnableHook(void* target)
 		return false;
 	}
 
-	bool ok = MakeRelJump(it->second.target, it->second.detour);
+	bool ok = SyMakeRelJump(it->second.target, it->second.detour);
 	if (!ok) {
 		if (SylvHooker::debug2)
-			std::cerr << "EnableHook: MakeRelJump failed!" << std::endl;
+			std::cerr << "EnableHook: SyMakeRelJump failed!" << std::endl;
 		return false;
 	}
 
 	it->second.enabled = true;
 	if (debug)
-		std::cout << FormatString("Hook enabled on %p", it->second.target) << std::endl;
+		std::cout << SylvHooker::FormatString("Hook enabled on %p", it->second.target) << std::endl;
 
 	if (SylvHooker::debug2)
 		std::cout << "EnableHook: succeeded." << std::endl;
@@ -421,7 +421,7 @@ bool SylvHooker::EnableHook(void* target)
 bool SylvHooker::DisableHook(void* target)
 {
 	if (SylvHooker::debug2)
-		std::cout << FormatString("DisableHook called: target=%p", target) << std::endl;
+		std::cout << SylvHooker::FormatString("DisableHook called: target=%p", target) << std::endl;
 
 	
 	auto it = g_hooks.find(target);
@@ -431,16 +431,16 @@ bool SylvHooker::DisableHook(void* target)
 		return false;
 	}
 
-	bool ok = WriteMemory(it->second.target, it->second.origBytes.data(), it->second.overwriteLen);
+	bool ok = SyWriteMemory(it->second.target, it->second.origBytes.data(), it->second.overwriteLen);
 	if (!ok) {
 		if (SylvHooker::debug2)
-			std::cerr << "DisableHook: WriteMemory failed!" << std::endl;
+			std::cerr << "DisableHook: SyWriteMemory failed!" << std::endl;
 		return false;
 	}
 
 	it->second.enabled = false;
 	if (debug)
-		std::cerr << FormatString("Hook disabled on %p", it->second.target) << std::endl;
+		std::cerr << SylvHooker::FormatString("Hook disabled on %p", it->second.target) << std::endl;
 
 	if (SylvHooker::debug2)
 		std::cout << "DisableHook: succeeded." << std::endl;
@@ -451,7 +451,7 @@ bool SylvHooker::DisableHook(void* target)
 bool SylvHooker::RemoveHook(void* target)
 {
 	if (SylvHooker::debug2)
-		std::cout << FormatString("RemoveHook called: target=%p", target) << std::endl;
+		std::cout << SylvHooker::FormatString("RemoveHook called: target=%p", target) << std::endl;
 
 	
 	auto it = g_hooks.find(target);
@@ -468,7 +468,7 @@ bool SylvHooker::RemoveHook(void* target)
 		VirtualFree(it->second.trampoline, 0, MEM_RELEASE);
 
 	if (debug)
-		std::cerr << FormatString("Hook removed on %p", it->second.target) << std::endl;
+		std::cerr << SylvHooker::FormatString("Hook removed on %p", it->second.target) << std::endl;
 
 	g_hooks.erase(it);
 
@@ -487,10 +487,10 @@ bool SylvHooker::Uninitialize()
 	for (auto& kv : g_hooks)
 	{
 		if (SylvHooker::debug2)
-			std::cout << FormatString("Uninitialize: cleaning hook target=%p", kv.second.target) << std::endl;
+			std::cout << SylvHooker::FormatString("Uninitialize: cleaning hook target=%p", kv.second.target) << std::endl;
 
 		if (kv.second.enabled)
-			WriteMemory(kv.second.target, kv.second.origBytes.data(), kv.second.overwriteLen);
+			SyWriteMemory(kv.second.target, kv.second.origBytes.data(), kv.second.overwriteLen);
 		if (kv.second.trampoline)
 			VirtualFree(kv.second.trampoline, 0, MEM_RELEASE);
 	}
